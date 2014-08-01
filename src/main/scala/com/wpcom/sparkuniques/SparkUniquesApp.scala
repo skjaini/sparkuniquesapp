@@ -16,12 +16,12 @@ object SparkUniquesApp {
   def main(args: Array[String]) {
 
     if (args.length < 2) {
-      System.err.println("Usage: SparkUniquesApp <raw input files> <outout> ")
-      System.err.println("Example: SparkUniquesApp /data/2014/07/01/stats-uniques* sparkuniques.out ")
+      System.err.println("Usage: SparkUniquesApp <source dir> <use parquet>")
+      System.err.println("Example: SparkUniquesApp /data/2014/07/01 true")
       System.exit(1)
     }
 
-    val Array(input_files, output_file) = args
+    val Array(sourceDirectory, doParquet) = args
 
     // Create basic objects to access the cluster
     val sc = new SparkContext(new SparkConf().setAppName("SparkUniques"))
@@ -32,17 +32,42 @@ object SparkUniquesApp {
 
     // Create StatsPixel RDD 
     import sqlContext.createSchemaRDD
-    val statsPixels = sc.textFile(input_files).map(_.split("\t")).map(p => StatsPixel(df.format(new Date( p(0).trim.toLong*1000L )), p(1), p(2).trim.toInt))
-    
-    // Register the RDD as table
-    statsPixels.registerAsTable("statspixels")
+    val statsPixelsRDD = sc.textFile(sourceDirectory).map(_.split("\t")).map(p => StatsPixel(df.format(new Date( p(0).trim.toLong*1000L )), p(1), p(2).trim.toInt))
 
-    // Construct the uniques query
-    val query = sqlContext.sql("select blogId, count(distinct(userId)) from statspixels group by blogId")
+    val now = System.currentTimeMillis / 1000
+    val tableName = "statspixels_" + now.toString
 
-    // Save as local file
-    // query.saveAsTextFile(output_file)
+    // Convert to Parquet format and query the registered table
+    if (doParquet.toBoolean) {
 
-    System.out.println(query.collect().foreach(println))
+      // Write out an RDD as a parquet file
+      statsPixelsRDD.saveAsParquetFile(tableName + ".parquet")
+
+      // Read in parquet file.  Parquet files are self-describing so the schmema is preserved.
+      val statsPixelParquetFile = sqlContext.parquetFile(tableName + ".parquet")
+
+      //Parquet files can also be registered as tables and then used in SQL statements.
+      statsPixelParquetFile.registerAsTable(tableName)
+
+      // Construct the uniques query
+      val query = sqlContext.sql("select blogId, count(distinct(userId)) from " + tableName + " group by blogId")
+   
+      query.saveAsTextFile(tableName)
+
+      // System.out.println(query.collect().foreach(println))
+    } else {
+
+      // Register the RDD as table
+      statsPixelsRDD.registerAsTable(tableName)
+
+      // Construct the uniques query
+      val query = sqlContext.sql("select blogId, count(distinct(userId)) from " + tableName + " group by blogId")
+   
+      // Save as local file
+      query.saveAsTextFile(tableName)
+
+      // System.out.println(query.collect().foreach(println))
+    }
+
   }
 }
