@@ -11,7 +11,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 
 object SparkUniquesApp {
-  case class StatsPixel(date: String, userId: String, blogId: Int)
+  case class StatsPixel(date: String, userId: String, blogId: Long)
 
   def main(args: Array[String]) {
 
@@ -32,7 +32,7 @@ object SparkUniquesApp {
 
     // Create StatsPixel RDD 
     import sqlContext.createSchemaRDD
-    val statsPixelsRDD = sc.textFile(sourceDirectory).map(_.split("\t")).map(p => StatsPixel(df.format(new Date( p(0).trim.toLong*1000L )), p(1), p(2).trim.toInt))
+    val statsPixelsRDD = sc.textFile(sourceDirectory).map(_.split("\t")).map(p => StatsPixel(df.format(new Date( p(0).trim.toLong*1000L )), p(1), p(2).trim.toLong))
 
     val now = System.currentTimeMillis / 1000
     val tableName = "statspixels_" + now.toString
